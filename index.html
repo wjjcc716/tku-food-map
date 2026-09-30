@@ -21,9 +21,12 @@
     <!-- 主內容區 -->
     <main class="container my-4">
         <!-- 搜尋列、量身訂做與隨機抽獎按鈕 -->
-        <div class="row justify-content-center mb-4">
-            <div class="col-md-9 d-flex flex-wrap gap-2 justify-content-center">
+        <div class="row justify-content-center mb-3">
+            <div class="col-md-10 d-flex flex-wrap gap-2 justify-content-center">
                 <input type="text" id="search-input" class="form-control form-control-lg rounded-pill shadow-sm flex-grow-1" placeholder="🔍 搜尋店家名稱、學府路、便當、拉麵...">
+                <button class="btn btn-outline-success rounded-pill px-3 fw-bold text-nowrap shadow-sm" id="open-only-btn">
+                    🟢 只看營業中
+                </button>
                 <button class="btn btn-warning rounded-pill px-3 fw-bold text-nowrap shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
                     🎯 量身訂做
                 </button>
@@ -124,9 +127,7 @@
                     <div id="slot-machine" class="fs-2 fw-bold text-primary my-3">
                         按下按鈕開始抽獎！
                     </div>
-                    <div id="random-result-card" class="d-none mt-3">
-                        <!-- 抽中店家結果會渲染在這裡 -->
-                    </div>
+                    <div id="random-result-card" class="d-none mt-3"></div>
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button type="button" class="btn btn-danger rounded-pill px-4 fw-bold" id="start-roll-btn">

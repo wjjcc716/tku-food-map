@@ -1,4 +1,5 @@
 let allRestaurants = [];
+let showOnlyOpen = false; // 是否只顯示營業中
 
 document.addEventListener('DOMContentLoaded', () => {
     fetch('restaurants.json')
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setupSearchInput();
             setupSmartFilter();
             setupRandomPicker();
+            setupOpenStatusToggle();
         })
         .catch(error => {
             console.error('無法載入 restaurants.json:', error);
@@ -29,28 +31,66 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 });
 
-// 渲染餐廳卡片列表
+// ⏰ 判斷目前是否營業中的核心邏輯
+function isOpenNow(hoursStr) {
+    if (!hoursStr || hoursStr === "24小時營業") return true;
+    
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // 格式化解析 "11:00 - 20:30" 或 "11:00-20:30"
+    const times = hoursStr.split('-').map(t => t.trim());
+    if (times.length !== 2) return true; // 若格式無法解析預設顯示
+
+    const parseMinutes = (timeStr) => {
+        const [h, m] = timeStr.split(':').map(Number);
+        return h * 60 + (m || 0);
+    };
+
+    const startMinutes = parseMinutes(times[0]);
+    let endMinutes = parseMinutes(times[1]);
+
+    // 跨夜處理（例如 17:00 - 02:00）
+    if (endMinutes < startMinutes) {
+        endMinutes += 24 * 60;
+        if (currentMinutes < startMinutes) {
+            return (currentMinutes + 24 * 60) <= endMinutes;
+        }
+    }
+
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+}
+
+// 渲染餐廳卡片列表 (含即時營業狀態)
 function renderRestaurants(list) {
     const container = document.getElementById('restaurant-list');
     const countDisplay = document.getElementById('restaurant-count');
     if (!container) return;
 
-    if (countDisplay) {
-        countDisplay.textContent = `共找到 ${list.length} 家淡江美食`;
+    // 是否套用「只看營業中」過濾
+    let displayList = list;
+    if (showOnlyOpen) {
+        displayList = list.filter(item => isOpenNow(item.hours));
     }
 
-    if (!list || list.length === 0) {
+    if (countDisplay) {
+        countDisplay.textContent = `共找到 ${displayList.length} 家淡江美食`;
+    }
+
+    if (!displayList || displayList.length === 0) {
         container.innerHTML = `
             <div class="col-12 text-center py-5">
-                <p class="fs-5 text-muted">😢 找不到符合條件的淡江美食，試試看點擊其他區域或分類吧！</p>
+                <p class="fs-5 text-muted">😢 找不到符合條件的淡江美食（可能目前時間已打烊），試試切換區域或關閉「只看營業中」！</p>
             </div>`;
         return;
     }
 
-    container.innerHTML = list.map(item => {
+    container.innerHTML = displayList.map(item => {
         const rating = item.rating || "4.0";
         const reviewCount = item.reviewCount || 0;
         const address = item.address || '淡江大學周邊';
+        const hours = item.hours || '11:00 - 20:30';
+        const openStatus = isOpenNow(hours);
         const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name + ' ' + address)}`;
 
         return `
@@ -62,11 +102,15 @@ function renderRestaurants(list) {
                             <span class="text-warning fw-bold">★ ${rating} <small class="text-muted">(${reviewCount})</small></span>
                         </div>
                         <h5 class="card-title fw-bold text-dark mb-2">${item.name}</h5>
-                        <div class="mb-2">
-                            <span class="badge bg-light text-dark border me-1">${item.category || '美食'}</span>
+                        <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
+                            <span class="badge ${openStatus ? 'bg-success' : 'bg-secondary'} px-2 py-1">
+                                ${openStatus ? '🟢 營業中' : '🔴 休息中'}
+                            </span>
+                            <span class="badge bg-light text-dark border">${item.category || '美食'}</span>
                             ${item.isPopular ? '<span class="badge bg-danger">🔥 超人氣</span>' : ''}
                         </div>
-                        <p class="card-text text-secondary fs-7 mb-2">${item.intro || '淡江學生熱門用餐選擇'}</p>
+                        <p class="card-text text-secondary fs-7 mb-1">${item.intro || '淡江學生熱門用餐選擇'}</p>
+                        <p class="text-muted small mb-1">🕒 營業時間：${hours}</p>
                         <p class="text-muted small mb-0">📍 ${address}</p>
                     </div>
                     <div class="card-footer bg-white border-0 pt-0 pb-3">
@@ -80,7 +124,27 @@ function renderRestaurants(list) {
     }).join('');
 }
 
-// 🎲 隨機抽獎核心邏輯
+// 🟢 切換「只看營業中」按鈕
+function setupOpenStatusToggle() {
+    const toggleBtn = document.getElementById('open-only-btn');
+    if (!toggleBtn) return;
+
+    toggleBtn.addEventListener('click', () => {
+        showOnlyOpen = !showOnlyOpen;
+        if (showOnlyOpen) {
+            toggleBtn.classList.remove('btn-outline-success');
+            toggleBtn.classList.add('btn-success', 'active');
+            toggleBtn.textContent = '🟢 已篩選：只看營業中';
+        } else {
+            toggleBtn.classList.remove('btn-success', 'active');
+            toggleBtn.classList.add('btn-outline-success');
+            toggleBtn.textContent = '🟢 只看營業中';
+        }
+        renderRestaurants(allRestaurants);
+    });
+}
+
+// 🎲 隨機抽獎
 function setupRandomPicker() {
     const startBtn = document.getElementById('start-roll-btn');
     const slotDisplay = document.getElementById('slot-machine');
@@ -96,10 +160,9 @@ function setupRandomPicker() {
         slotDisplay.classList.remove('d-none');
 
         let counter = 0;
-        const speed = 50; // 滾動速度 (毫秒)
-        const totalRolls = 20; // 滾動次數
+        const speed = 50;
+        const totalRolls = 20;
 
-        // 快閃滾動店家名稱動畫
         const interval = setInterval(() => {
             const randomIndex = Math.floor(Math.random() * allRestaurants.length);
             slotDisplay.textContent = allRestaurants[randomIndex].name;
@@ -108,10 +171,7 @@ function setupRandomPicker() {
             if (counter >= totalRolls) {
                 clearInterval(interval);
                 
-                // 決定最終中獎店家
                 const winner = allRestaurants[Math.floor(Math.random() * allRestaurants.length)];
-                
-                // 隱藏滾動條，顯示中獎卡片
                 slotDisplay.classList.add('d-none');
                 resultCard.classList.remove('d-none');
 
@@ -141,7 +201,7 @@ function setupRandomPicker() {
     });
 }
 
-// 路段按鈕點擊篩選
+// 路段按鈕篩選
 function setupRoadButtons() {
     const roadBtns = document.querySelectorAll('.road-btn');
     if (!roadBtns.length) return;
@@ -178,7 +238,7 @@ function setupRoadButtons() {
     });
 }
 
-// 美食種類快選標籤
+// 美食種類篩選
 function setupCategoryButtons() {
     const catBtns = document.querySelectorAll('.category-btn');
     if (!catBtns.length) return;
@@ -228,7 +288,7 @@ function setupSearchInput() {
     });
 }
 
-// 🎯 量身訂做進階篩選
+// 量身訂做進階篩選
 function setupSmartFilter() {
     const applyBtn = document.getElementById('apply-filter-btn');
     if (!applyBtn) return;
