@@ -1,0 +1,82 @@
+/* 全域字體與背景 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8f9fa;
+    color: #333333;
+}
+
+/* 頂部 Header 漸層 */
+header {
+    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%) !important;
+    letter-spacing: 0.5px;
+}
+
+/* 搜尋框 focus 效果 */
+#search-input {
+    border: 2px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+#search-input:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0.5rem 1.2rem rgba(13, 110, 253, 0.2);
+}
+
+/* 按鈕動畫與互動懸停效果 */
+.road-btn, .category-btn {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 500;
+}
+
+.road-btn:hover, .category-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 卡片懸浮浮動特效 */
+.hover-card {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    border-radius: 12px !important;
+    overflow: hidden;
+}
+
+.hover-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Modal 彈出視窗細節修飾 */
+.modal-content {
+    border-radius: 16px !important;
+    overflow: hidden;
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+}
+
+/* 隨機抽獎文字動畫效果 */
+#slot-machine {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 自訂捲軸樣式 */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
