@@ -14,7 +14,7 @@
     <header class="bg-primary text-white text-center py-4 shadow-sm mb-4">
         <div class="container">
             <h1 class="fw-bold mb-1">🎓 淡江食圖 TKU Food Map</h1>
-            <p class="mb-0 opacity-75">淡江學生專屬 · 步行圈美食速查地圖</p>
+            <p class="mb-0 opacity-75">淡江學生專屬 · 步行 15 分鐘美食速查地圖</p>
         </div>
     </header>
 
@@ -94,7 +94,7 @@
                             <option value="麵">麵食 / 拉麵</option>
                             <option value="火鍋">火鍋 / 鍋物</option>
                             <option value="早餐">早餐 / 早午餐</option>
-                            <option value="小吃">炸雞 / 滷味 / 宵夜</option>
+                            <option value="宵夜">炸雞 / 滷味 / 宵夜</option>
                             <option value="飲料">飲料 / 冰品</option>
                         </select>
                     </div>
@@ -115,7 +115,7 @@
         </div>
     </div>
 
-    <!-- 🎲 隨機抽獎 Modal 彈出視窗 -->
+    <!-- 🎲 隨機抽獎 Modal 彈出視窗（支援選區域） -->
     <div class="modal fade" id="randomModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content rounded-4 border-0 shadow text-center">
@@ -124,6 +124,19 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-4" id="random-modal-body">
+                    <!-- 📍 指定區域抽獎下拉選單 -->
+                    <div class="mb-3 px-3">
+                        <label class="form-label fw-bold text-dark">📍 請選擇要抽哪個區域的美食：</label>
+                        <select class="form-select rounded-pill text-center border-danger fw-bold" id="random-road-select">
+                            <option value="ALL">🌐 全部區域 (全校園隨機抽)</option>
+                            <option value="水源街">📍 水源街專屬</option>
+                            <option value="北新路">📍 北新路專屬</option>
+                            <option value="大學城">📍 大學城專屬</option>
+                            <option value="學府路">📍 學府路專屬</option>
+                            <option value="大忠街">📍 大忠街專屬</option>
+                        </select>
+                    </div>
+
                     <div id="slot-machine" class="fs-2 fw-bold text-primary my-3">
                         按下按鈕開始抽獎！
                     </div>
