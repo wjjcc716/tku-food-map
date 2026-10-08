@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return response.json();
         })
         .then(data => {
-            // 🎲 每次重新整理網頁時，隨機打亂餐廳順序（Fisher-Yates Shuffle）
+            // 🎲 每次開啟/重新整理網頁時隨機洗牌
             allRestaurants = shuffleArray(data);
             displayedRestaurants = [...allRestaurants];
 
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 });
 
-// 陣列隨機洗牌函式
+// 洗牌演算法
 function shuffleArray(array) {
     let arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -45,14 +45,27 @@ function shuffleArray(array) {
     return arr;
 }
 
-// ⏰ 精確判斷「現在是否營業中」（考慮星期幾、午休時間、跨夜）
+// ⏰ 徹底修復：精確抓取當前時間並判斷營業狀態（含 24HR 與特例）
 function isOpenNow(item) {
+    if (!item) return false;
+
+    // 1. 先從簡介與時間字串做 24 小時特例檢查
+    const hoursStr = (item.hours || "").toLowerCase();
+    const nameStr = (item.name || "").toLowerCase();
+    
+    if (hoursStr.includes("24小時") || hoursStr.includes("24 hrs") || hoursStr.includes("全天營業") || nameStr.includes("7-11") || nameStr.includes("全家")) {
+        return true;
+    }
+    if (hoursStr.includes("休息") || hoursStr.includes("公休")) {
+        return false;
+    }
+
     const now = new Date();
     const currentDay = now.getDay(); // 0 是週日, 1-6 是週一至週六
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // 1. 若有 Google 官方結構化 periods 資料，優先用極精確判斷
-    if (item.periods && item.periods.length > 0) {
+    // 2. 解析 Google 結構化 periods 資料
+    if (item.periods && Array.isArray(item.periods) && item.periods.length > 0) {
         for (let period of item.periods) {
             if (!period.open) continue;
 
@@ -61,43 +74,40 @@ function isOpenNow(item) {
             const openMinute = period.open.minute || 0;
             const openTimeMin = openHour * 60 + openMinute;
 
-            // 24 小時營業
-            if (!period.close && openDay === currentDay && openHour === 0) return true;
+            // 特例：沒有 close 欄位，代表 24 小時營業
+            if (!period.close) {
+                if (openDay === currentDay || openHour === 0) return true;
+                continue;
+            }
 
-            if (period.close) {
-                const closeDay = period.close.day;
-                const closeHour = period.close.hour || 0;
-                const closeMinute = period.close.minute || 0;
-                let closeTimeMin = closeHour * 60 + closeMinute;
+            const closeDay = period.close.day;
+            const closeHour = period.close.hour || 0;
+            const closeMinute = period.close.minute || 0;
+            let closeTimeMin = closeHour * 60 + closeMinute;
 
-                // 同一天內的時段
-                if (openDay === currentDay && closeDay === currentDay) {
-                    if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
-                        return true;
-                    }
+            // 同一天內的時段 (例如 11:00 ~ 21:00)
+            if (openDay === currentDay && closeDay === currentDay) {
+                if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
+                    return true;
                 }
-                // 跨夜時段（例如 18:00 開到隔天 02:00）
-                else if (openDay === currentDay) {
-                    closeTimeMin += 24 * 60;
-                    if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
-                        return true;
-                    }
-                } else if (closeDay === currentDay) {
-                    // 昨天跨到今天清晨的時段
-                    if (currentMinutes <= closeTimeMin) {
-                        return true;
-                    }
+            }
+            // 跨夜時段 (例如 17:00 開到隔天 02:00)
+            else if (openDay === currentDay) {
+                closeTimeMin += 24 * 60;
+                if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
+                    return true;
+                }
+            } else if (closeDay === currentDay) {
+                // 昨天跨到今天凌晨的時段
+                if (currentMinutes <= closeTimeMin) {
+                    return true;
                 }
             }
         }
         return false;
     }
 
-    // 2. 文字備援解析邏輯
-    const hoursStr = item.hours || "";
-    if (hoursStr.includes("24小時")) return true;
-    if (hoursStr.includes("休息") || hoursStr.includes("公休")) return false;
-
+    // 3. 備援文字時間解析
     const ranges = hoursStr.split(',');
     for (let range of ranges) {
         const times = range.split('-').map(t => t.trim());
@@ -123,29 +133,26 @@ function isOpenNow(item) {
     return false;
 }
 
-// 🌙 精確判斷是否為「真·宵夜」店家（營業超過深夜 22:00 或跨夜至凌晨）
+// 🌙 精確判斷宵夜
 function isLateNightFood(item) {
     if (item.category && item.category.includes("宵夜")) return true;
+    const hoursStr = item.hours || "";
+    if (hoursStr.includes("24小時")) return true;
 
     if (item.periods && item.periods.length > 0) {
         for (let period of item.periods) {
             if (period.close) {
                 const closeHour = period.close.hour;
-                // 打烊時間大於等於 22 點，或是在凌晨 0~5 點之間打烊
                 if (closeHour >= 22 || closeHour <= 5) return true;
             }
         }
     }
 
-    const hoursStr = item.hours || "";
-    if (hoursStr.includes("24小時")) return true;
-    
-    // 檢查字串中是否有 22:00, 23:00, 24:00, 01:00, 02:00 等宵夜時間
     const nightRegex = /(2[2-9]|0[0-5]):\d{2}/;
     return nightRegex.test(hoursStr);
 }
 
-// 渲染卡片列表
+// 渲染卡片
 function renderRestaurants(list) {
     const container = document.getElementById('restaurant-list');
     const countDisplay = document.getElementById('restaurant-count');
@@ -163,7 +170,7 @@ function renderRestaurants(list) {
     if (!displayList || displayList.length === 0) {
         container.innerHTML = `
             <div class="col-12 text-center py-5">
-                <p class="fs-5 text-muted">😢 找不到符合條件的店家（可能目前時間非營業時間），試試切換區域或關閉「只看營業中」！</p>
+                <p class="fs-5 text-muted">😢 找不到符合條件的店家（可能目前非營業時間），試試關閉「只看營業中」！</p>
             </div>`;
         return;
     }
@@ -227,7 +234,7 @@ function setupOpenStatusToggle() {
     });
 }
 
-// 🎲 隨機抽獎（支援：指定區域 / 全部區域隨機抽）
+// 🎲 隨機抽獎（🎯 嚴格要求：只抽目前【營業中 🟢】的店家）
 function setupRandomPicker() {
     const startBtn = document.getElementById('start-roll-btn');
     const slotDisplay = document.getElementById('slot-machine');
@@ -239,7 +246,7 @@ function setupRandomPicker() {
     startBtn.addEventListener('click', () => {
         const selectedRoad = roadSelect ? roadSelect.value : 'ALL';
         
-        // 根據選擇的路段過濾可抽取店家池
+        // 1. 先依據區域篩選
         let candidateList = allRestaurants;
         if (selectedRoad !== 'ALL') {
             candidateList = allRestaurants.filter(item => {
@@ -251,8 +258,11 @@ function setupRandomPicker() {
             });
         }
 
+        // 🎯 2. 嚴格過濾：只保留【現在正營業中】的店家！
+        candidateList = candidateList.filter(item => isOpenNow(item));
+
         if (candidateList.length === 0) {
-            alert('⚠️ 該區域目前沒有可抽取的店家，請選擇其他區域！');
+            alert('⚠️ 該區域目前沒有正在營業中的店家，請試試選擇其他區域！');
             return;
         }
 
@@ -278,7 +288,6 @@ function setupRandomPicker() {
 
                 const rating = winner.rating || "4.0";
                 const address = winner.address || '淡江大學周邊';
-                const openStatus = isOpenNow(winner);
                 const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(winner.name + ' ' + address)}`;
 
                 resultCard.innerHTML = `
@@ -288,7 +297,7 @@ function setupRandomPicker() {
                             <h3 class="fw-bold text-dark mt-1">${winner.name}</h3>
                         </div>
                         <p class="mb-1"><strong>📍 位置：</strong>${winner.road}（${address}）</p>
-                        <p class="mb-1"><strong>🕒 狀態：</strong>${openStatus ? '🟢 目前營業中' : '🔴 目前休息中'} (${winner.hours})</p>
+                        <p class="mb-1"><strong>🕒 狀態：</strong><span class="badge bg-success">🟢 目前營業中</span> (${winner.hours})</p>
                         <p class="mb-1"><strong>⭐ 評分：</strong>${rating} ★</p>
                         <p class="text-secondary small mb-3">${winner.intro}</p>
                         <a href="${googleMapUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-danger w-100 rounded-pill fw-bold">
@@ -304,7 +313,7 @@ function setupRandomPicker() {
     });
 }
 
-// 美食種類篩選（正確處理宵夜）
+// 種類按鈕
 function setupCategoryButtons() {
     const catBtns = document.querySelectorAll('.category-btn');
     if (!catBtns.length) return;
@@ -318,7 +327,6 @@ function setupCategoryButtons() {
             if (cat === '全部') {
                 displayedRestaurants = [...allRestaurants];
             } else if (cat === '宵夜') {
-                // 🎯 宵夜改為精準時間判斷，不再誤將 20:00 關門的店放進來！
                 displayedRestaurants = allRestaurants.filter(item => isLateNightFood(item));
             } else {
                 displayedRestaurants = allRestaurants.filter(item => {
@@ -333,7 +341,7 @@ function setupCategoryButtons() {
     });
 }
 
-// 路段按鈕點擊篩選
+// 路段按鈕
 function setupRoadButtons() {
     const roadBtns = document.querySelectorAll('.road-btn');
     if (!roadBtns.length) return;
@@ -366,7 +374,7 @@ function setupRoadButtons() {
     });
 }
 
-// 搜尋框即時過濾
+// 搜尋輸入
 function setupSearchInput() {
     const searchInput = document.getElementById('search-input');
     if (!searchInput) return;
@@ -391,7 +399,7 @@ function setupSearchInput() {
     });
 }
 
-// 量身訂做進階篩選
+// 進階篩選
 function setupSmartFilter() {
     const applyBtn = document.getElementById('apply-filter-btn');
     if (!applyBtn) return;
