@@ -2,6 +2,10 @@ let allRestaurants = [];
 let displayedRestaurants = [];
 let showOnlyOpen = false;
 
+// 🎯 全域紀錄目前的條件狀態，實現「多條件疊加過濾」
+let currentRoad = '全部';
+let currentCategory = '全部';
+
 document.addEventListener('DOMContentLoaded', () => {
     fetch('restaurants.json')
         .then(response => {
@@ -13,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
             allRestaurants = shuffleArray(data);
             displayedRestaurants = [...allRestaurants];
 
-            renderRestaurants(displayedRestaurants);
+            renderRestaurants();
             setupCategoryButtons();
             setupRoadButtons();
             setupSearchInput();
@@ -35,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 });
 
-// 洗牌演算法
+// 陣列隨機洗牌
 function shuffleArray(array) {
     let arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -45,11 +49,10 @@ function shuffleArray(array) {
     return arr;
 }
 
-// ⏰ 徹底修復：精確抓取當前時間並判斷營業狀態（含 24HR 與特例）
+// ⏰ 判斷目前是否營業中
 function isOpenNow(item) {
     if (!item) return false;
 
-    // 1. 先從簡介與時間字串做 24 小時特例檢查
     const hoursStr = (item.hours || "").toLowerCase();
     const nameStr = (item.name || "").toLowerCase();
     
@@ -61,10 +64,9 @@ function isOpenNow(item) {
     }
 
     const now = new Date();
-    const currentDay = now.getDay(); // 0 是週日, 1-6 是週一至週六
+    const currentDay = now.getDay();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // 2. 解析 Google 結構化 periods 資料
     if (item.periods && Array.isArray(item.periods) && item.periods.length > 0) {
         for (let period of item.periods) {
             if (!period.open) continue;
@@ -74,7 +76,6 @@ function isOpenNow(item) {
             const openMinute = period.open.minute || 0;
             const openTimeMin = openHour * 60 + openMinute;
 
-            // 特例：沒有 close 欄位，代表 24 小時營業
             if (!period.close) {
                 if (openDay === currentDay || openHour === 0) return true;
                 continue;
@@ -85,20 +86,16 @@ function isOpenNow(item) {
             const closeMinute = period.close.minute || 0;
             let closeTimeMin = closeHour * 60 + closeMinute;
 
-            // 同一天內的時段 (例如 11:00 ~ 21:00)
             if (openDay === currentDay && closeDay === currentDay) {
                 if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
                     return true;
                 }
-            }
-            // 跨夜時段 (例如 17:00 開到隔天 02:00)
-            else if (openDay === currentDay) {
+            } else if (openDay === currentDay) {
                 closeTimeMin += 24 * 60;
                 if (currentMinutes >= openTimeMin && currentMinutes <= closeTimeMin) {
                     return true;
                 }
             } else if (closeDay === currentDay) {
-                // 昨天跨到今天凌晨的時段
                 if (currentMinutes <= closeTimeMin) {
                     return true;
                 }
@@ -107,7 +104,6 @@ function isOpenNow(item) {
         return false;
     }
 
-    // 3. 備援文字時間解析
     const ranges = hoursStr.split(',');
     for (let range of ranges) {
         const times = range.split('-').map(t => t.trim());
@@ -152,30 +148,80 @@ function isLateNightFood(item) {
     return nightRegex.test(hoursStr);
 }
 
-// 渲染卡片
-function renderRestaurants(list) {
+// 🎯 核心組合過濾器：同時考量【路段】+【種類】+【只看營業中】+【搜尋關鍵字】
+function applyCombinedFilter() {
+    const searchInput = document.getElementById('search-input');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    displayedRestaurants = allRestaurants.filter(item => {
+        // 1. 路段條件比對
+        let roadMatch = true;
+        if (currentRoad !== '全部') {
+            const roadStr = (item.road || '').toLowerCase();
+            const addrStr = (item.address || '').toLowerCase();
+            if (currentRoad === '學府路') {
+                roadMatch = addrStr.includes('學府路') || roadStr.includes('學府路');
+            } else if (currentRoad === '大學城') {
+                roadMatch = roadStr.includes('大學城') || addrStr.includes('大學城') || addrStr.includes('學府路') || addrStr.includes('182巷');
+            } else {
+                roadMatch = roadStr.includes(currentRoad.toLowerCase()) || addrStr.includes(currentRoad.toLowerCase());
+            }
+        }
+
+        // 2. 種類條件比對
+        let catMatch = true;
+        if (currentCategory !== '全部') {
+            if (currentCategory === '宵夜') {
+                catMatch = isLateNightFood(item);
+            } else {
+                const catStr = (item.category || '').toLowerCase();
+                const nameStr = (item.name || '').toLowerCase();
+                const introStr = (item.intro || '').toLowerCase();
+                const targetCat = currentCategory.toLowerCase();
+                catMatch = catStr.includes(targetCat) || nameStr.includes(targetCat) || introStr.includes(targetCat);
+            }
+        }
+
+        // 3. 搜尋欄文字比對
+        let searchMatch = true;
+        if (query) {
+            const nameStr = (item.name || '').toLowerCase();
+            const addrStr = (item.address || '').toLowerCase();
+            const catStr = (item.category || '').toLowerCase();
+            const roadStr = (item.road || '').toLowerCase();
+            searchMatch = nameStr.includes(query) || addrStr.includes(query) || catStr.includes(query) || roadStr.includes(query);
+        }
+
+        return roadMatch && catMatch && searchMatch;
+    });
+
+    renderRestaurants();
+}
+
+// 渲染畫面
+function renderRestaurants() {
     const container = document.getElementById('restaurant-list');
     const countDisplay = document.getElementById('restaurant-count');
     if (!container) return;
 
-    let displayList = list;
+    let list = displayedRestaurants;
     if (showOnlyOpen) {
-        displayList = list.filter(item => isOpenNow(item));
+        list = displayedRestaurants.filter(item => isOpenNow(item));
     }
 
     if (countDisplay) {
-        countDisplay.textContent = `共找到 ${displayList.length} 家淡江美食`;
+        countDisplay.textContent = `共找到 ${list.length} 家淡江美食`;
     }
 
-    if (!displayList || displayList.length === 0) {
+    if (!list || list.length === 0) {
         container.innerHTML = `
             <div class="col-12 text-center py-5">
-                <p class="fs-5 text-muted">😢 找不到符合條件的店家（可能目前非營業時間），試試關閉「只看營業中」！</p>
+                <p class="fs-5 text-muted">😢 找不到符合條件的店家（例如目前組合無營業店家），試試切換條件或關閉「只看營業中」！</p>
             </div>`;
         return;
     }
 
-    container.innerHTML = displayList.map(item => {
+    container.innerHTML = list.map(item => {
         const rating = item.rating || "4.0";
         const reviewCount = item.reviewCount || 0;
         const address = item.address || '淡江大學周邊';
@@ -214,7 +260,43 @@ function renderRestaurants(list) {
     }).join('');
 }
 
-// 切換只看營業中
+// 設定路段按鈕點擊
+function setupRoadButtons() {
+    const roadBtns = document.querySelectorAll('.road-btn');
+    if (!roadBtns.length) return;
+
+    roadBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            roadBtns.forEach(b => {
+                b.classList.remove('active', 'btn-primary');
+                b.classList.add('btn-outline-primary');
+            });
+            e.target.classList.remove('btn-outline-primary');
+            e.target.classList.add('active', 'btn-primary');
+
+            currentRoad = e.target.dataset.road || '全部';
+            applyCombinedFilter();
+        });
+    });
+}
+
+// 設定食物種類按鈕點擊
+function setupCategoryButtons() {
+    const catBtns = document.querySelectorAll('.category-btn');
+    if (!catBtns.length) return;
+
+    catBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            catBtns.forEach(b => b.classList.remove('active', 'btn-dark'));
+            e.target.classList.add('active', 'btn-dark');
+
+            currentCategory = e.target.dataset.category || '全部';
+            applyCombinedFilter();
+        });
+    });
+}
+
+// 切換「只看營業中」
 function setupOpenStatusToggle() {
     const toggleBtn = document.getElementById('open-only-btn');
     if (!toggleBtn) return;
@@ -230,11 +312,21 @@ function setupOpenStatusToggle() {
             toggleBtn.classList.add('btn-outline-success');
             toggleBtn.textContent = '🟢 只看營業中';
         }
-        renderRestaurants(displayedRestaurants);
+        renderRestaurants();
     });
 }
 
-// 🎲 隨機抽獎（🎯 嚴格要求：只抽目前【營業中 🟢】的店家）
+// 搜尋框即時監聽
+function setupSearchInput() {
+    const searchInput = document.getElementById('search-input');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', () => {
+        applyCombinedFilter();
+    });
+}
+
+// 🎲 隨機抽獎系統
 function setupRandomPicker() {
     const startBtn = document.getElementById('start-roll-btn');
     const slotDisplay = document.getElementById('slot-machine');
@@ -246,7 +338,6 @@ function setupRandomPicker() {
     startBtn.addEventListener('click', () => {
         const selectedRoad = roadSelect ? roadSelect.value : 'ALL';
         
-        // 1. 先依據區域篩選
         let candidateList = allRestaurants;
         if (selectedRoad !== 'ALL') {
             candidateList = allRestaurants.filter(item => {
@@ -258,7 +349,6 @@ function setupRandomPicker() {
             });
         }
 
-        // 🎯 2. 嚴格過濾：只保留【現在正營業中】的店家！
         candidateList = candidateList.filter(item => isOpenNow(item));
 
         if (candidateList.length === 0) {
@@ -313,93 +403,7 @@ function setupRandomPicker() {
     });
 }
 
-// 種類按鈕
-function setupCategoryButtons() {
-    const catBtns = document.querySelectorAll('.category-btn');
-    if (!catBtns.length) return;
-
-    catBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            catBtns.forEach(b => b.classList.remove('active', 'btn-dark'));
-            e.target.classList.add('active', 'btn-dark');
-
-            const cat = e.target.dataset.category;
-            if (cat === '全部') {
-                displayedRestaurants = [...allRestaurants];
-            } else if (cat === '宵夜') {
-                displayedRestaurants = allRestaurants.filter(item => isLateNightFood(item));
-            } else {
-                displayedRestaurants = allRestaurants.filter(item => {
-                    const categoryMatch = (item.category || '').includes(cat);
-                    const nameMatch = (item.name || '').includes(cat);
-                    const introMatch = (item.intro || '').includes(cat);
-                    return categoryMatch || nameMatch || introMatch;
-                });
-            }
-            renderRestaurants(displayedRestaurants);
-        });
-    });
-}
-
-// 路段按鈕
-function setupRoadButtons() {
-    const roadBtns = document.querySelectorAll('.road-btn');
-    if (!roadBtns.length) return;
-
-    roadBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            roadBtns.forEach(b => {
-                b.classList.remove('active', 'btn-primary');
-                b.classList.add('btn-outline-primary');
-            });
-            e.target.classList.remove('btn-outline-primary');
-            e.target.classList.add('active', 'btn-primary');
-
-            const selectedRoad = e.target.dataset.road;
-
-            if (!selectedRoad || selectedRoad === '全部') {
-                displayedRestaurants = [...allRestaurants];
-            } else {
-                displayedRestaurants = allRestaurants.filter(item => {
-                    const roadStr = (item.road || '').toLowerCase();
-                    const addrStr = (item.address || '').toLowerCase();
-
-                    if (selectedRoad === '學府路') return addrStr.includes('學府路') || roadStr.includes('學府路');
-                    if (selectedRoad === '大學城') return roadStr.includes('大學城') || addrStr.includes('大學城') || addrStr.includes('學府路') || addrStr.includes('182巷');
-                    return roadStr.includes(selectedRoad) || addrStr.includes(selectedRoad);
-                });
-            }
-            renderRestaurants(displayedRestaurants);
-        });
-    });
-}
-
-// 搜尋輸入
-function setupSearchInput() {
-    const searchInput = document.getElementById('search-input');
-    if (!searchInput) return;
-
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.trim().toLowerCase();
-        if (!query) {
-            displayedRestaurants = [...allRestaurants];
-            renderRestaurants(displayedRestaurants);
-            return;
-        }
-
-        displayedRestaurants = allRestaurants.filter(item => {
-            const nameMatch = (item.name || '').toLowerCase().includes(query);
-            const addressMatch = (item.address || '').toLowerCase().includes(query);
-            const categoryMatch = (item.category || '').toLowerCase().includes(query);
-            const roadMatch = (item.road || '').toLowerCase().includes(query);
-            return nameMatch || addressMatch || categoryMatch || roadMatch;
-        });
-
-        renderRestaurants(displayedRestaurants);
-    });
-}
-
-// 進階篩選
+// 進階篩選器
 function setupSmartFilter() {
     const applyBtn = document.getElementById('apply-filter-btn');
     if (!applyBtn) return;
@@ -431,6 +435,6 @@ function setupSmartFilter() {
             return roadMatch && catMatch && ratingMatch;
         });
 
-        renderRestaurants(displayedRestaurants);
+        renderRestaurants();
     });
 }
